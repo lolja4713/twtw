@@ -1,0 +1,501 @@
+name: build
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crear archivos del proyecto
+        run: |
+          cat > build.gradle <<'TWTW_EOF'
+          plugins {
+              id 'fabric-loom' version '1.9-SNAPSHOT'
+              id 'maven-publish'
+          }
+
+          version = project.mod_version
+          group = project.maven_group
+
+          base {
+              archivesName = project.archives_base_name
+          }
+
+          repositories {
+          }
+
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+          }
+
+          processResources {
+              inputs.property "version", project.version
+              filesMatching("fabric.mod.json") {
+                  expand "version": inputs.properties.version
+              }
+          }
+
+          tasks.withType(JavaCompile).configureEach {
+              it.options.release = 21
+          }
+
+          java {
+              withSourcesJar()
+              sourceCompatibility = JavaVersion.VERSION_21
+              targetCompatibility = JavaVersion.VERSION_21
+          }
+          TWTW_EOF
+          cat > gradle.properties <<'TWTW_EOF'
+          org.gradle.jvmargs=-Xmx2G
+          org.gradle.parallel=true
+
+          minecraft_version=1.21.1
+          yarn_mappings=1.21.1+build.3
+          loader_version=0.16.9
+          fabric_version=0.115.0+1.21.1
+
+          mod_version=0.1.0
+          maven_group=com.theworldthatwatches
+          archives_base_name=the-world-that-watches
+          TWTW_EOF
+          cat > settings.gradle <<'TWTW_EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name = 'twtw'
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches
+          cat > src/main/java/com/theworldthatwatches/TWTW.java <<'TWTW_EOF'
+          package com.theworldthatwatches;
+
+          import com.theworldthatwatches.registry.ModEntities;
+          import com.theworldthatwatches.registry.ModItems;
+          import net.fabricmc.api.ModInitializer;
+          import net.minecraft.util.Identifier;
+          import org.slf4j.Logger;
+          import org.slf4j.LoggerFactory;
+
+          public class TWTW implements ModInitializer {
+              public static final String MOD_ID = "twtw";
+              public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+              public static Identifier id(String path) {
+                  return Identifier.of(MOD_ID, path);
+              }
+
+              @Override
+              public void onInitialize() {
+                  ModEntities.register();
+                  ModItems.register();
+                  LOGGER.info("The World That Watches: cargado. Algo te observa.");
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches/client
+          cat > src/main/java/com/theworldthatwatches/client/TWTWClient.java <<'TWTW_EOF'
+          package com.theworldthatwatches.client;
+
+          import com.theworldthatwatches.TWTW;
+          import com.theworldthatwatches.registry.ModEntities;
+          import net.fabricmc.api.ClientModInitializer;
+          import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
+          import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+          import net.minecraft.client.render.entity.model.EntityModelLayer;
+
+          public class TWTWClient implements ClientModInitializer {
+              public static final EntityModelLayer WATCHER_LAYER =
+                      new EntityModelLayer(TWTW.id("watcher"), "main");
+
+              @Override
+              public void onInitializeClient() {
+                  EntityModelLayerRegistry.registerModelLayer(WATCHER_LAYER, WatcherModel::getTexturedModelData);
+                  EntityRendererRegistry.register(ModEntities.WATCHER, WatcherRenderer::new);
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches/client
+          cat > src/main/java/com/theworldthatwatches/client/WatcherModel.java <<'TWTW_EOF'
+          package com.theworldthatwatches.client;
+
+          import com.theworldthatwatches.entity.WatcherEntity;
+          import net.minecraft.client.model.*;
+          import net.minecraft.client.render.VertexConsumer;
+          import net.minecraft.client.render.entity.model.EntityModel;
+          import net.minecraft.client.util.math.MatrixStack;
+          import net.minecraft.util.math.MathHelper;
+
+          /** Modelo del Watcher: figura negra, muy alta y delgada (3.5 bloques). */
+          public class WatcherModel extends EntityModel<WatcherEntity> {
+              private final ModelPart root;
+              private final ModelPart head;
+              private final ModelPart rightArm;
+              private final ModelPart leftArm;
+              private final ModelPart rightLeg;
+              private final ModelPart leftLeg;
+
+              public WatcherModel(ModelPart root) {
+                  this.root = root;
+                  this.head = root.getChild("head");
+                  this.rightArm = root.getChild("right_arm");
+                  this.leftArm = root.getChild("left_arm");
+                  this.rightLeg = root.getChild("right_leg");
+                  this.leftLeg = root.getChild("left_leg");
+              }
+
+              public static TexturedModelData getTexturedModelData() {
+                  ModelData data = new ModelData();
+                  ModelPartData r = data.getRoot();
+
+                  r.addChild("head", ModelPartBuilder.create().uv(0, 0)
+                          .cuboid(-4, -8, -4, 8, 8, 8), ModelTransform.pivot(0, -24, 0));
+                  r.addChild("body", ModelPartBuilder.create().uv(0, 16)
+                          .cuboid(-4, -24, -2, 8, 24, 4), ModelTransform.NONE);
+                  r.addChild("right_arm", ModelPartBuilder.create().uv(32, 0)
+                          .cuboid(-1, 0, -1, 2, 28, 2), ModelTransform.pivot(-5, -22, 0));
+                  r.addChild("left_arm", ModelPartBuilder.create().uv(32, 0)
+                          .cuboid(-1, 0, -1, 2, 28, 2), ModelTransform.pivot(5, -22, 0));
+                  r.addChild("right_leg", ModelPartBuilder.create().uv(48, 0)
+                          .cuboid(-1, 0, -1, 2, 24, 2), ModelTransform.pivot(-2, 0, 0));
+                  r.addChild("left_leg", ModelPartBuilder.create().uv(48, 0)
+                          .cuboid(-1, 0, -1, 2, 24, 2), ModelTransform.pivot(2, 0, 0));
+
+                  return TexturedModelData.of(data, 64, 64);
+              }
+
+              @Override
+              public void setAngles(WatcherEntity entity, float limbAngle, float limbDistance,
+                                    float animationProgress, float headYaw, float headPitch) {
+                  head.yaw = headYaw * MathHelper.RADIANS_PER_DEGREE;
+                  head.pitch = headPitch * MathHelper.RADIANS_PER_DEGREE;
+
+                  float swing = MathHelper.cos(limbAngle * 0.6662f) * limbDistance;
+                  rightLeg.pitch = swing * 1.2f;
+                  leftLeg.pitch = -swing * 1.2f;
+
+                  float sway = MathHelper.sin(animationProgress * 0.05f) * 0.03f;
+                  rightArm.pitch = -swing * 0.8f + sway;
+                  leftArm.pitch = swing * 0.8f - sway;
+                  rightArm.roll = 0.03f;
+                  leftArm.roll = -0.03f;
+              }
+
+              @Override
+              public void render(MatrixStack matrices, VertexConsumer vertices, int light, int overlay, int color) {
+                  root.render(matrices, vertices, light, overlay, color);
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches/client
+          cat > src/main/java/com/theworldthatwatches/client/WatcherRenderer.java <<'TWTW_EOF'
+          package com.theworldthatwatches.client;
+
+          import com.theworldthatwatches.TWTW;
+          import com.theworldthatwatches.entity.WatcherEntity;
+          import net.minecraft.client.render.RenderLayer;
+          import net.minecraft.client.render.entity.EntityRendererFactory;
+          import net.minecraft.client.render.entity.MobEntityRenderer;
+          import net.minecraft.client.render.entity.feature.EyesFeatureRenderer;
+          import net.minecraft.util.Identifier;
+
+          public class WatcherRenderer extends MobEntityRenderer<WatcherEntity, WatcherModel> {
+              private static final Identifier TEXTURE = TWTW.id("textures/entity/watcher.png");
+              private static final RenderLayer EYES = RenderLayer.getEyes(TWTW.id("textures/entity/watcher_eyes.png"));
+
+              public WatcherRenderer(EntityRendererFactory.Context ctx) {
+                  super(ctx, new WatcherModel(ctx.getPart(TWTWClient.WATCHER_LAYER)), 0.5f);
+                  this.addFeature(new EyesFeatureRenderer<WatcherEntity, WatcherModel>(this) {
+                      @Override
+                      public RenderLayer getEyesTexture() {
+                          return EYES;
+                      }
+                  });
+              }
+
+              @Override
+              public Identifier getTexture(WatcherEntity entity) {
+                  return TEXTURE;
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches/entity
+          cat > src/main/java/com/theworldthatwatches/entity/WatcherEntity.java <<'TWTW_EOF'
+          package com.theworldthatwatches.entity;
+
+          import net.minecraft.entity.EntityType;
+          import net.minecraft.entity.ai.goal.MeleeAttackGoal;
+          import net.minecraft.entity.ai.goal.SwimGoal;
+          import net.minecraft.entity.attribute.DefaultAttributeContainer;
+          import net.minecraft.entity.attribute.EntityAttributes;
+          import net.minecraft.entity.mob.HostileEntity;
+          import net.minecraft.entity.player.PlayerEntity;
+          import net.minecraft.nbt.NbtCompound;
+          import net.minecraft.particle.ParticleTypes;
+          import net.minecraft.server.world.ServerWorld;
+          import net.minecraft.sound.SoundEvent;
+          import net.minecraft.sound.SoundEvents;
+          import net.minecraft.util.math.Vec3d;
+          import net.minecraft.world.World;
+
+          /**
+           * The Watcher: observa desde lejos, se queda inmóvil, desaparece si lo miras
+           * directamente y, tras mucho tiempo observándote, se vuelve agresivo.
+           */
+          public class WatcherEntity extends HostileEntity {
+              private static final double WATCH_RANGE = 64.0;
+              private static final int AGGRO_THRESHOLD = 20 * 90; // 90 s observando
+              private static final int GAZE_VANISH_TICKS = 25;    // ~1.25 s de mirada directa
+
+              private int aggression = 0;
+              private int gazeTicks = 0;
+
+              public WatcherEntity(EntityType<? extends HostileEntity> type, World world) {
+                  super(type, world);
+                  this.experiencePoints = 20;
+              }
+
+              public static DefaultAttributeContainer.Builder createWatcherAttributes() {
+                  return HostileEntity.createHostileAttributes()
+                          .add(EntityAttributes.GENERIC_MAX_HEALTH, 60.0)
+                          .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, 0.32)
+                          .add(EntityAttributes.GENERIC_ATTACK_DAMAGE, 8.0)
+                          .add(EntityAttributes.GENERIC_FOLLOW_RANGE, 64.0)
+                          .add(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE, 0.6);
+              }
+
+              @Override
+              protected void initGoals() {
+                  this.goalSelector.add(0, new SwimGoal(this));
+                  this.goalSelector.add(1, new MeleeAttackGoal(this, 1.2, false));
+              }
+
+              @Override
+              public void tick() {
+                  super.tick();
+                  if (this.getWorld().isClient) return;
+
+                  PlayerEntity player = this.getWorld().getClosestPlayer(this, WATCH_RANGE);
+                  if (player == null || player.isSpectator()) {
+                      aggression = Math.max(0, aggression - 2);
+                      gazeTicks = 0;
+                      this.setTarget(null);
+                      return;
+                  }
+
+                  aggression++;
+
+                  if (aggression >= AGGRO_THRESHOLD) {
+                      // Fase agresiva: persigue al jugador
+                      if (this.getTarget() != player) this.setTarget(player);
+                      return;
+                  }
+
+                  // Fase pasiva: inmóvil, mirando fijamente
+                  this.setTarget(null);
+                  this.getNavigation().stop();
+                  this.getLookControl().lookAt(player, 60.0f, 60.0f);
+
+                  if (isBeingLookedAt(player)) {
+                      gazeTicks++;
+                      if (gazeTicks >= GAZE_VANISH_TICKS) {
+                          vanish();
+                      }
+                  } else {
+                      gazeTicks = Math.max(0, gazeTicks - 1);
+                  }
+              }
+
+              private boolean isBeingLookedAt(PlayerEntity player) {
+                  Vec3d look = player.getRotationVec(1.0f).normalize();
+                  Vec3d toMe = new Vec3d(
+                          this.getX() - player.getX(),
+                          this.getEyeY() - player.getEyeY(),
+                          this.getZ() - player.getZ()).normalize();
+                  return look.dotProduct(toMe) > 0.995 && player.canSee(this);
+              }
+
+              private void vanish() {
+                  if (this.getWorld() instanceof ServerWorld sw) {
+                      sw.spawnParticles(ParticleTypes.LARGE_SMOKE,
+                              getX(), getY() + 1.5, getZ(), 25, 0.3, 1.0, 0.3, 0.01);
+                  }
+                  this.discard();
+              }
+
+              @Override
+              protected SoundEvent getAmbientSound() {
+                  return SoundEvents.AMBIENT_CAVE.value();
+              }
+
+              @Override
+              public void writeCustomDataToNbt(NbtCompound nbt) {
+                  super.writeCustomDataToNbt(nbt);
+                  nbt.putInt("Aggression", aggression);
+              }
+
+              @Override
+              public void readCustomDataFromNbt(NbtCompound nbt) {
+                  super.readCustomDataFromNbt(nbt);
+                  aggression = nbt.getInt("Aggression");
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches/registry
+          cat > src/main/java/com/theworldthatwatches/registry/ModEntities.java <<'TWTW_EOF'
+          package com.theworldthatwatches.registry;
+
+          import com.theworldthatwatches.TWTW;
+          import com.theworldthatwatches.entity.WatcherEntity;
+          import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
+          import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
+          import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
+          import net.minecraft.entity.EntityType;
+          import net.minecraft.entity.SpawnGroup;
+          import net.minecraft.entity.SpawnRestriction;
+          import net.minecraft.entity.mob.HostileEntity;
+          import net.minecraft.registry.Registries;
+          import net.minecraft.registry.Registry;
+          import net.minecraft.world.Heightmap;
+
+          public class ModEntities {
+              public static final EntityType<WatcherEntity> WATCHER = Registry.register(
+                      Registries.ENTITY_TYPE,
+                      TWTW.id("watcher"),
+                      EntityType.Builder.create(WatcherEntity::new, SpawnGroup.MONSTER)
+                              .dimensions(0.7f, 3.5f)
+                              .maxTrackingRange(10)
+                              .build("watcher"));
+
+              public static void register() {
+                  FabricDefaultAttributeRegistry.register(WATCHER, WatcherEntity.createWatcherAttributes());
+
+                  SpawnRestriction.register(WATCHER, SpawnRestriction.Location.ON_GROUND,
+                          Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, HostileEntity::canSpawnInDark);
+
+                  // Muy raro: peso 2, grupo de 1
+                  BiomeModifications.addSpawn(BiomeSelectors.foundInOverworld(), SpawnGroup.MONSTER, WATCHER, 2, 1, 1);
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/java/com/theworldthatwatches/registry
+          cat > src/main/java/com/theworldthatwatches/registry/ModItems.java <<'TWTW_EOF'
+          package com.theworldthatwatches.registry;
+
+          import com.theworldthatwatches.TWTW;
+          import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+          import net.minecraft.item.Item;
+          import net.minecraft.item.ItemGroups;
+          import net.minecraft.item.SpawnEggItem;
+          import net.minecraft.registry.Registries;
+          import net.minecraft.registry.Registry;
+
+          public class ModItems {
+              public static final Item WATCHER_SPAWN_EGG = Registry.register(
+                      Registries.ITEM,
+                      TWTW.id("watcher_spawn_egg"),
+                      new SpawnEggItem(ModEntities.WATCHER, 0x050505, 0xCC0000, new Item.Settings()));
+
+              public static void register() {
+                  ItemGroupEvents.modifyEntriesEvent(ItemGroups.SPAWN_EGGS)
+                          .register(entries -> entries.add(WATCHER_SPAWN_EGG));
+              }
+          }
+          TWTW_EOF
+          mkdir -p src/main/resources/assets/twtw/lang
+          cat > src/main/resources/assets/twtw/lang/en_us.json <<'TWTW_EOF'
+          {
+            "entity.twtw.watcher": "The Watcher",
+            "item.twtw.watcher_spawn_egg": "The Watcher Spawn Egg"
+          }
+          TWTW_EOF
+          mkdir -p src/main/resources/assets/twtw/lang
+          cat > src/main/resources/assets/twtw/lang/es_es.json <<'TWTW_EOF'
+          {
+            "entity.twtw.watcher": "El Observador",
+            "item.twtw.watcher_spawn_egg": "Huevo generador de El Observador"
+          }
+          TWTW_EOF
+          mkdir -p src/main/resources/assets/twtw/models/item
+          cat > src/main/resources/assets/twtw/models/item/watcher_spawn_egg.json <<'TWTW_EOF'
+          {
+            "parent": "minecraft:item/template_spawn_egg"
+          }
+          TWTW_EOF
+          mkdir -p src/main/resources
+          cat > src/main/resources/fabric.mod.json <<'TWTW_EOF'
+          {
+            "schemaVersion": 1,
+            "id": "twtw",
+            "version": "${version}",
+            "name": "The World That Watches",
+            "description": "Terror analógico y psicológico. El mundo te observa.",
+            "authors": ["Tu nombre"],
+            "license": "All-Rights-Reserved",
+            "environment": "*",
+            "entrypoints": {
+              "main": ["com.theworldthatwatches.TWTW"],
+              "client": ["com.theworldthatwatches.client.TWTWClient"]
+            },
+            "depends": {
+              "fabricloader": ">=0.16.0",
+              "minecraft": "~1.21.1",
+              "java": ">=21",
+              "fabric-api": "*"
+            }
+          }
+          TWTW_EOF
+          mkdir -p tools
+          cat > tools/gen_textures.py <<'TWTW_EOF'
+          import os, random
+          from PIL import Image
+
+          random.seed(7)
+          out = "src/main/resources/assets/twtw/textures/entity"
+          os.makedirs(out, exist_ok=True)
+
+          # Textura principal 64x64: negro con ruido sutil
+          img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+          px = img.load()
+          for y in range(64):
+              for x in range(64):
+                  v = random.randint(6, 20)
+                  px[x, y] = (v, v, v + 2, 255)
+
+          # Ojos rojos en la cara frontal de la cabeza (u 8..16, v 8..16)
+          eyes = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+          epx = eyes.load()
+          for (x, y) in [(9, 11), (10, 11), (13, 11), (14, 11)]:
+              px[x, y] = (255, 20, 20, 255)
+              epx[x, y] = (255, 30, 30, 255)
+
+          img.save(os.path.join(out, "watcher.png"))
+          eyes.save(os.path.join(out, "watcher_eyes.png"))
+          print("Texturas generadas")
+          TWTW_EOF
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generar texturas
+        run: |
+          pip install pillow
+          python tools/gen_textures.py
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.12
+      - name: Compilar
+        run: gradle build --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: twtw-jar
+          path: build/libs/*.jar
